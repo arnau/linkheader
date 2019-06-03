@@ -313,6 +313,24 @@ mod tests {
             assert_eq!(actual, expected);
         }
 
+        #[test]
+        fn unicode_fest() {
+            let input = "<http://example.org/\u{FE0F}>; rel=\"\u{1F383}\"";
+
+            let expected = Header {
+                links: vec![Link {
+                    target: "http://example.org/\u{FE0F}".into(),
+                    params: vec![Param {
+                        name: "rel".into(),
+                        value: Some("🎃".into()),
+                    }],
+                }],
+            };
+
+            let actual = Header::parse(input);
+
+            assert_eq!(actual, expected);
+        }
     }
 
     mod link {

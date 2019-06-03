@@ -2,12 +2,11 @@ ws           = _{ " " | "\t" }
 rws          = _{ " "+ }
 ows          = _{ ws* }
 bws          = _{ ws* }
-safe_char    = @{ ASCII_ALPHANUMERIC | "." | "-" | "_" | "*" }
-char         = @{ safe_char | ":" | "/" | "%" | "'" | "#" }
-target       = @{ char* }
-name         = @{ safe_char+ }
-value        = @{ char* }
-quoted_value = @{ (" " | "\t" | NEWLINE | char)* }
+char         = { !(NEWLINE | ws) ~ ANY }
+target       = @{ (!(">") ~ char)* }
+name         = @{ (!("=") ~ char)+ }
+value        = @{ (!("," | "\"") ~ char)* }
+quoted_value = @{ (!("\"") ~ (ws | NEWLINE | char))* }
 param        = { name ~ (bws ~ "=" ~ bws ~ (("\"" ~ quoted_value ~ "\"") | value))? }
 link         = { "<" ~ target ~ ">" ~ (ows ~ ";" ~ ows ~ param)* }
 header       = { SOI ~ (ows ~ link ~ (ows ~ "," ~ ows ~ link)* ~ ows) ~ EOI }
