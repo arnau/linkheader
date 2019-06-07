@@ -6,4 +6,5 @@ extern crate pest;
 extern crate pest_derive;
 
 pub mod error;
+pub mod param;
 pub mod parser;

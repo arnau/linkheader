@@ -1,12 +1,34 @@
-ws           = _{ " " | "\t" }
-rws          = _{ " "+ }
-ows          = _{ ws* }
-bws          = _{ ws* }
+ws           = _{ " " | "\t" }  // Whitespace
+rws          = _{ " "+ }        // Required whitespace
+ows          = _{ ws* }         // Optional whitespace
+bws          = _{ ws* }         // Bad whitespace
+
+// Atoms
 char         = { !(NEWLINE | ws) ~ ANY }
+pct_encoded  = @{ "%" ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT }
+attr_char    = @{ ASCII_ALPHANUMERIC
+  | "!" | "#" | "$" | "&" | "+" | "-" | "." | "^" | "_" | "`" | "|" | "~"
+}
+
+// Expects a URI but allows anything but the end marker >
 target       = @{ (!(">") ~ char)* }
-name         = @{ (!("=") ~ char)+ }
-value        = @{ (!("," | "\"") ~ char)* }
+
+// Expects a Token but allows anything but the end marker =
+name         = @{ (!("=" | "*") ~ char)+ }
+
+// Expects a valid RFC8187 string
+encoding     = @{ (!("'") ~ char)+ }
+language     = @{ (!("'") ~ char)* }
+star_value   = @{ (pct_encoded | attr_char)+ }
+star_group   = _{ encoding ~ "'" ~ language ~ "'" ~ star_value }
+
+// Expects a Token or a Quoted String
+token_value  = @{ (!("," | "\"") ~ char)* }
 quoted_value = @{ (!("\"") ~ (ws | NEWLINE | char))* }
-param        = { name ~ (bws ~ "=" ~ bws ~ (("\"" ~ quoted_value ~ "\"") | value))? }
+value        = _{ (("\"" ~ quoted_value ~ "\"") | token_value) }
+
+star_param   = _{ name ~ "*" ~ (bws ~ "=" ~ bws ~ star_group)? }
+param        = { star_param | (name ~ (bws ~ "=" ~ bws ~ value)?) }
+
 link         = { "<" ~ target ~ ">" ~ (ows ~ ";" ~ ows ~ param)* }
 header       = { SOI ~ (ows ~ link ~ (ows ~ "," ~ ows ~ link)* ~ ows) ~ EOI }

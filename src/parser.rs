@@ -1,4 +1,5 @@
 use crate::error::{ParserError, Result};
+use crate::param::Param;
 use pest::{iterators::Pair, Parser};
 use std::fmt::{self, Display};
 
@@ -21,45 +22,9 @@ impl From<&str> for UriRef {
     }
 }
 
-/// Represents a generic link param pair.
-#[derive(Debug, PartialEq)]
-pub struct Param {
-    name: String,
-    value: Option<String>,
-}
-
 impl Display for Rule {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self)
-    }
-}
-
-impl Param {
-    pub fn from_rule(pair: Pair<Rule>) -> Result<Param> {
-        ensure!(
-            pair.as_rule() == Rule::param,
-            ParserError::InvalidRule(Rule::param, pair.as_rule())
-        );
-
-        let mut name = String::new();
-        let mut value = None;
-
-        for inner_pair in pair.into_inner() {
-            match inner_pair.as_rule() {
-                Rule::name => name.push_str(inner_pair.as_str()),
-
-                Rule::value => value = Some(inner_pair.as_str().into()),
-
-                Rule::quoted_value => value = Some(inner_pair.as_str().into()),
-
-                _ => unreachable!(),
-            }
-        }
-
-        Ok(Param {
-            name: name.into(),
-            value: value.clone(),
-        })
     }
 }
 
@@ -151,6 +116,7 @@ mod tests {
 
     mod header {
         use super::*;
+        use crate::param::*;
 
         #[test]
         fn single_link() {
@@ -175,17 +141,11 @@ mod tests {
                 links: vec![
                     Link {
                         target: "https://example.org/3".into(),
-                        params: vec![Param {
-                            name: "rel".into(),
-                            value: Some("next".into()),
-                        }],
+                        params: vec![Param::new("rel", Some("next".into()))],
                     },
                     Link {
                         target: "https://example.org/1".into(),
-                        params: vec![Param {
-                            name: "rel".into(),
-                            value: Some("previous".into()),
-                        }],
+                        params: vec![Param::new("rel", Some("previous".into()))],
                     },
                 ],
             };
@@ -203,14 +163,8 @@ mod tests {
                 links: vec![Link {
                     target: "http://example.com/TheBook/chapter2".into(),
                     params: vec![
-                        Param {
-                            name: "rel".into(),
-                            value: Some("previous".into()),
-                        },
-                        Param {
-                            name: "title".into(),
-                            value: Some("previous chapter".into()),
-                        },
+                        Param::new("rel", Some("previous".into())),
+                        Param::new("title", Some("previous chapter".into())),
                     ],
                 }],
             };
@@ -227,10 +181,7 @@ mod tests {
             let expected = Header {
                 links: vec![Link {
                     target: "/".into(),
-                    params: vec![Param {
-                        name: "rel".into(),
-                        value: Some("http://example.net/foo".into()),
-                    }],
+                    params: vec![Param::new("rel", Some("http://example.net/foo".into()))],
                 }],
             };
 
@@ -247,14 +198,8 @@ mod tests {
                 links: vec![Link {
                     target: "/terms".into(),
                     params: vec![
-                        Param {
-                            name: "rel".into(),
-                            value: Some("copyright".into()),
-                        },
-                        Param {
-                            name: "anchor".into(),
-                            value: Some("#foo".into()),
-                        },
+                        Param::new("rel", Some("copyright".into())),
+                        Param::new("anchor", Some("#foo".into())),
                     ],
                 }],
             };
@@ -273,27 +218,29 @@ mod tests {
                     Link {
                         target: "/TheBook/chapter2".into(),
                         params: vec![
-                            Param {
-                                name: "rel".into(),
-                                value: Some("previous".into()),
-                            },
-                            Param {
-                                name: "title*".into(),
-                                value: Some("UTF-8'de'letztes%20Kapitel".into()),
-                            },
+                            Param::new("rel", Some("previous".into())),
+                            Param::new(
+                                "title",
+                                Some(Value::Compound {
+                                    value: "letztes Kapitel".into(),
+                                    encoding: Encoding::Utf8,
+                                    language: Some("de".into()),
+                                }),
+                            ),
                         ],
                     },
                     Link {
                         target: "/TheBook/chapter4".into(),
                         params: vec![
-                            Param {
-                                name: "rel".into(),
-                                value: Some("next".into()),
-                            },
-                            Param {
-                                name: "title*".into(),
-                                value: Some("UTF-8'de'n%c3%a4chstes%20Kapitel".into()),
-                            },
+                            Param::new("rel", Some("next".into())),
+                            Param::new(
+                                "title",
+                                Some(Value::Compound {
+                                    value: "nächstes Kapitel".into(),
+                                    encoding: Encoding::Utf8,
+                                    language: Some("de".into()),
+                                }),
+                            ),
                         ],
                     },
                 ],
@@ -311,10 +258,10 @@ mod tests {
             let expected = Header {
                 links: vec![Link {
                     target: "http://example.org/".into(),
-                    params: vec![Param {
-                        name: "rel".into(),
-                        value: Some("start http://example.net/relation/other".into()),
-                    }],
+                    params: vec![Param::new(
+                        "rel",
+                        Some("start http://example.net/relation/other".into()),
+                    )],
                 }],
             };
 
@@ -330,10 +277,7 @@ mod tests {
             let expected = Header {
                 links: vec![Link {
                     target: "http://example.org/\u{FE0F}".into(),
-                    params: vec![Param {
-                        name: "rel".into(),
-                        value: Some("🎃".into()),
-                    }],
+                    params: vec![Param::new("rel", Some("🎃".into()))],
                 }],
             };
 
@@ -345,6 +289,7 @@ mod tests {
 
     mod link {
         use super::*;
+        use crate::param::*;
 
         #[test]
         fn wrong_rule_type() {
@@ -383,10 +328,7 @@ mod tests {
             let input = r#"<https://example.org>; foo"#;
             let expected = Link {
                 target: "https://example.org".into(),
-                params: vec![Param {
-                    name: "foo".into(),
-                    value: None,
-                }],
+                params: vec![Param::new("foo", None)],
             };
 
             let mut rule = Rfc8288Parser::parse(Rule::link, &input).expect("unsuccessful parse");
@@ -401,10 +343,7 @@ mod tests {
             let input = r#"<https://example.org>; rel=next"#;
             let expected = Link {
                 target: "https://example.org".into(),
-                params: vec![Param {
-                    name: "rel".into(),
-                    value: Some("next".into()),
-                }],
+                params: vec![Param::new("rel", Some(Value::Simple("next".into())))],
             };
 
             let mut rule = Rfc8288Parser::parse(Rule::link, &input).expect("unsuccessful parse");
@@ -419,10 +358,7 @@ mod tests {
             let input = r#"<https://example.org>; rel="next""#;
             let expected = Link {
                 target: "https://example.org".into(),
-                params: vec![Param {
-                    name: "rel".into(),
-                    value: Some("next".into()),
-                }],
+                params: vec![Param::new("rel", Some(Value::Simple("next".into())))],
             };
 
             let mut rule = Rfc8288Parser::parse(Rule::link, &input).expect("unsuccessful parse");
