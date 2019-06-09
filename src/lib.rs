@@ -33,6 +33,7 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "https://example.org".into(),
+                relation: None,
                 params: vec![],
             }],
         };
@@ -50,11 +51,13 @@ mod tests {
             links: vec![
                 Link {
                     target: "https://example.org/3".into(),
-                    params: vec![Param::new("rel", Some("next".into()))],
+                    relation: Some("next".into()),
+                    params: vec![],
                 },
                 Link {
                     target: "https://example.org/1".into(),
-                    params: vec![Param::new("rel", Some("previous".into()))],
+                    relation: Some("previous".into()),
+                    params: vec![],
                 },
             ],
         };
@@ -72,10 +75,8 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "http://example.com/TheBook/chapter2".into(),
-                params: vec![
-                    Param::new("rel", Some("previous".into())),
-                    Param::new("title", Some("previous chapter".into())),
-                ],
+                relation: Some("previous".into()),
+                params: vec![Param::new("title", Some("previous chapter".into()))],
             }],
         };
 
@@ -91,7 +92,8 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "/".into(),
-                params: vec![Param::new("rel", Some("http://example.net/foo".into()))],
+                relation: Some("http://example.net/foo".into()),
+                params: vec![],
             }],
         };
 
@@ -107,10 +109,8 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "/terms".into(),
-                params: vec![
-                    Param::new("rel", Some("copyright".into())),
-                    Param::new("anchor", Some("#foo".into())),
-                ],
+                relation: Some("copyright".into()),
+                params: vec![Param::new("anchor", Some("#foo".into()))],
             }],
         };
 
@@ -127,31 +127,27 @@ mod tests {
             links: vec![
                 Link {
                     target: "/TheBook/chapter2".into(),
-                    params: vec![
-                        Param::new("rel", Some("previous".into())),
-                        Param::new(
-                            "title",
-                            Some(Value::Compound {
-                                value: "letztes Kapitel".into(),
-                                encoding: Encoding::Utf8,
-                                language: Some("de".into()),
-                            }),
-                        ),
-                    ],
+                    relation: Some("previous".into()),
+                    params: vec![Param::new(
+                        "title",
+                        Some(Value::Compound {
+                            value: "letztes Kapitel".into(),
+                            encoding: Encoding::Utf8,
+                            language: Some("de".into()),
+                        }),
+                    )],
                 },
                 Link {
                     target: "/TheBook/chapter4".into(),
-                    params: vec![
-                        Param::new("rel", Some("next".into())),
-                        Param::new(
-                            "title",
-                            Some(Value::Compound {
-                                value: "nächstes Kapitel".into(),
-                                encoding: Encoding::Utf8,
-                                language: Some("de".into()),
-                            }),
-                        ),
-                    ],
+                    relation: Some("next".into()),
+                    params: vec![Param::new(
+                        "title",
+                        Some(Value::Compound {
+                            value: "nächstes Kapitel".into(),
+                            encoding: Encoding::Utf8,
+                            language: Some("de".into()),
+                        }),
+                    )],
                 },
             ],
         };
@@ -166,12 +162,34 @@ mod tests {
         let input = r#"<http://example.org/>; rel="start http://example.net/relation/other""#;
 
         let expected = Header {
+            links: vec![
+                Link {
+                    target: "http://example.org/".into(),
+                    relation: Some("start".into()),
+                    params: vec![],
+                },
+                Link {
+                    target: "http://example.org/".into(),
+                    relation: Some("http://example.net/relation/other".into()),
+                    params: vec![],
+                },
+            ],
+        };
+
+        let actual = parse(input).expect("Expect a valid header");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tolerate_extra_rel() {
+        let input = r#"<http://example.org/>; rel="next"; rel="wrong""#;
+
+        let expected = Header {
             links: vec![Link {
                 target: "http://example.org/".into(),
-                params: vec![Param::new(
-                    "rel",
-                    Some("start http://example.net/relation/other".into()),
-                )],
+                relation: Some("next".into()),
+                params: vec![Param::new("rel", Some("wrong".into()))],
             }],
         };
 
@@ -187,7 +205,8 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "http://example.org/\u{FE0F}".into(),
-                params: vec![Param::new("rel", Some("🎃".into()))],
+                relation: Some("🎃".into()),
+                params: vec![],
             }],
         };
 

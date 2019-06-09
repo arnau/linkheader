@@ -28,7 +28,7 @@ impl Header {
             match inner_pair.as_rule() {
                 Rule::link => {
                     let link = Link::from_rule(inner_pair)?;
-                    links.push(link);
+                    links.extend(link);
                 }
 
                 Rule::EOI => (),

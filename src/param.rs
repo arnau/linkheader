@@ -48,7 +48,7 @@ use std::fmt::{self, Display};
 /// assert_eq!(param.name(), "rel");
 /// assert_eq!(param.value(), &Some(Value::Simple("next".into())));
 /// ```
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     name: String,
     value: Option<Value>,
