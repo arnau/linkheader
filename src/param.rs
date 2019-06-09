@@ -5,11 +5,10 @@
 // according to those terms.
 
 use crate::error::{ParserError, Result};
+use crate::parser::Rule;
 use percent_encoding::{percent_decode, utf8_percent_encode, DEFAULT_ENCODE_SET};
 use pest::iterators::Pair;
 use std::fmt::{self, Display};
-
-use crate::parser::Rule;
 
 /// A link param pair.
 ///
