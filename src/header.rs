@@ -9,6 +9,7 @@ use crate::link::Link;
 use crate::parser::Rule;
 use pest::iterators::Pair;
 
+/// A collection of links.
 #[derive(Debug, PartialEq)]
 pub struct Header {
     pub links: Vec<Link>,
@@ -47,7 +48,7 @@ mod tests {
 
     #[test]
     fn wrong_rule_type() {
-        let input = r#"<https://example.org>"#;
+        let input = r#"<https://example.org> rel=next"#;
 
         let rule = Rfc8288Parser::parse(Rule::link, &input)
             .expect("unsuccessful parse")

@@ -23,17 +23,17 @@ target       = @{ (!(">") ~ char)* }
 name         = @{ (!("=" | "*") ~ char)+ }
 
 // Expects a valid RFC8187 string
-encoding     = @{ (!("'") ~ char)+ }
-language     = @{ (!("'") ~ char)* }
-star_value   = @{ (pct_encoded | attr_char)+ }
-star_group   = _{ encoding ~ "'" ~ language ~ "'" ~ star_value }
+encoding       = @{ (!("'") ~ char)+ }
+language       = @{ (!("'") ~ char)* }
+pct_value      = @{ (pct_encoded | attr_char)+ }
+compound_value = _{ encoding ~ "'" ~ language ~ "'" ~ pct_value }
 
 // Expects a Token or a Quoted String
 token_value  = @{ (!("," | "\"") ~ char)* }
 quoted_value = @{ (!("\"") ~ (ws | NEWLINE | char))* }
 value        = _{ (("\"" ~ quoted_value ~ "\"") | token_value) }
 
-star_param   = _{ name ~ "*" ~ (bws ~ "=" ~ bws ~ star_group)? }
+star_param   = _{ name ~ "*" ~ (bws ~ "=" ~ bws ~ compound_value)? }
 param        = { star_param | (name ~ (bws ~ "=" ~ bws ~ value)?) }
 
 link         = { "<" ~ target ~ ">" ~ (ows ~ ";" ~ ows ~ param)* }

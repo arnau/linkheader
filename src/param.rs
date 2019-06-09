@@ -89,7 +89,7 @@ impl Param {
 
                 Rule::quoted_value => value = Some(inner_pair.as_str().into()),
 
-                Rule::star_value => match &encoding {
+                Rule::pct_value => match &encoding {
                     Some(enc @ Encoding::Utf8) => {
                         let decoded_value =
                             percent_decode(inner_pair.as_str().as_bytes()).decode_utf8()?;
