@@ -1,3 +1,9 @@
+// Copyright 2019 Arnau Siches
+//
+// Licensed under the MIT license <LICENSE or http://opensource.org/licenses/MIT>.
+// This file may not be copied, modified, or distributed except
+// according to those terms.
+
 use crate::error::{ParserError, Result};
 use percent_encoding::{percent_decode, utf8_percent_encode, DEFAULT_ENCODE_SET};
 use pest::iterators::Pair;
