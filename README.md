@@ -6,4 +6,5 @@ This parser tokenises a string conforming the serialisation rules described in
 
 ## Non-goals
 
-* [https://tools.ietf.org/html/rfc5646](Language tags [RFC5646]) are not decoded.
+* Language tags [RFC5646](https://tools.ietf.org/html/rfc5646) are not decoded.
+* Percent-decoding other than UTF-8.
