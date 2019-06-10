@@ -70,6 +70,15 @@ impl Param {
         &self.value
     }
 
+    /// A star param e.g. "title*" is a param marked to identify that its value
+    /// is a compound value.
+    pub fn is_star(&self) -> bool {
+        match self.value {
+            Some(Value::Compound { .. }) => true,
+            _ => false,
+        }
+    }
+
     pub fn from_rule(pair: Pair<Rule>) -> Result<Param> {
         ensure!(
             pair.as_rule() == Rule::param,
