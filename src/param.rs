@@ -67,6 +67,11 @@ impl Param {
         &self.value
     }
 
+    /// Consumes the param and returns its value.
+    pub fn into_value(self) -> Option<Value> {
+        self.value
+    }
+
     /// A star param e.g. "title*" is a param marked to identify that its value
     /// is a compound value.
     pub fn is_star(&self) -> bool {

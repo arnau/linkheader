@@ -9,6 +9,7 @@ use crate::{Encoding, Header, Link, Param, UriRef, Value};
 use percent_encoding::percent_decode;
 pub use pest::{iterators::Pair, Parser};
 use std::fmt::{self, Display};
+use url;
 
 #[derive(Parser)]
 #[grammar = "rfc8288.pest"]
@@ -20,16 +21,16 @@ impl Display for Rule {
     }
 }
 
-pub fn parse(input: &str) -> Result<Header> {
+pub fn parse(input: &str, context: Option<url::Url>) -> Result<Header> {
     let rule = Rfc8288Parser::parse(Rule::header, &input)
         .expect("unsuccessful parse")
         .next()
         .unwrap();
 
-    collect_header(rule)
+    collect_header(rule, context)
 }
 
-fn collect_header(pair: Pair<Rule>) -> Result<Header> {
+fn collect_header(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Header> {
     ensure!(
         pair.as_rule() == Rule::header,
         ParserError::InvalidRule(Rule::header.into(), pair.as_rule().into())
@@ -40,7 +41,7 @@ fn collect_header(pair: Pair<Rule>) -> Result<Header> {
     for inner_pair in pair.into_inner() {
         match inner_pair.as_rule() {
             Rule::link => {
-                let link = collect_links(inner_pair)?;
+                let link = collect_links(inner_pair, context.clone())?;
                 links.extend(link);
             }
 
@@ -53,13 +54,14 @@ fn collect_header(pair: Pair<Rule>) -> Result<Header> {
     Ok(Header { links })
 }
 
-fn collect_links(pair: Pair<Rule>) -> Result<Vec<Link>> {
+fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link>> {
     ensure!(
         pair.as_rule() == Rule::link,
         ParserError::InvalidRule(Rule::link, pair.as_rule())
     );
 
     let mut target = String::new();
+    let mut anchored_context = None;
     let mut params = vec![];
     let mut relations = vec![];
 
@@ -72,10 +74,20 @@ fn collect_links(pair: Pair<Rule>) -> Result<Vec<Link>> {
             Rule::param => {
                 let param = collect_param(inner_pair)?;
 
-                if param.name() == "rel" && relations.is_empty() && param.value().is_some() {
-                    let value: String = param.value().clone().unwrap().to_string();
+                if is_expected_param("rel", &param) && relations.is_empty() {
+                    let value = param.into_value().unwrap().to_string();
                     let values: Vec<String> = value.split(" ").map(|s| s.into()).collect();
+
                     relations.extend(values);
+                } else if is_expected_param("anchor", &param) && anchored_context.is_none() {
+                    let value = param.clone().into_value().unwrap().to_string();
+                    anchored_context = compose_context(&context, &value);
+
+                    // We keep the anchor param if it is not composable with
+                    // the given context to preserve information.
+                    if anchored_context.is_none() {
+                        params.push(param);
+                    }
                 } else {
                     params.push(param);
                 }
@@ -85,15 +97,42 @@ fn collect_links(pair: Pair<Rule>) -> Result<Vec<Link>> {
         }
     }
 
-    Ok(explode_links(target.clone().into(), relations, &params))
+    Ok(explode_links(
+        target.clone().into(),
+        anchored_context.or(context),
+        relations,
+        &params,
+    ))
 }
 
-fn explode_links(target: UriRef, relations: Vec<String>, params: &[Param]) -> Vec<Link> {
+fn is_expected_param(name: &str, param: &Param) -> bool {
+    param.name() == name && param.value().is_some()
+}
+
+/// Returns a context combined with the given anchor.
+///
+/// Note that when no context is present, if the anchor is not an absolute URL,
+/// the result is no context.
+fn compose_context(context: &Option<url::Url>, anchor: &str) -> Option<url::Url> {
+    match context {
+        Some(ctx) => ctx.join(anchor).ok(),
+
+        None => url::Url::parse(anchor).ok(),
+    }
+}
+
+fn explode_links(
+    target: UriRef,
+    context: Option<url::Url>,
+    relations: Vec<String>,
+    params: &[Param],
+) -> Vec<Link> {
     let mut result = vec![];
 
     if relations.is_empty() {
         return vec![Link {
             target,
+            context: context.clone(),
             relation: None,
             params: params.to_vec(),
         }];
@@ -102,6 +141,7 @@ fn explode_links(target: UriRef, relations: Vec<String>, params: &[Param]) -> Ve
     for rel in relations.into_iter() {
         result.push(Link {
             target: target.clone(),
+            context: context.clone(),
             relation: Some(rel.into()),
             params: params.to_vec(),
         });
@@ -178,12 +218,13 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "https://example.org".into(),
+                context: None,
                 relation: None,
                 params: vec![],
             }],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -196,18 +237,20 @@ mod tests {
             links: vec![
                 Link {
                     target: "https://example.org/3".into(),
+                    context: None,
                     relation: Some("next".into()),
                     params: vec![],
                 },
                 Link {
                     target: "https://example.org/1".into(),
+                    context: None,
                     relation: Some("previous".into()),
                     params: vec![],
                 },
             ],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -220,12 +263,13 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "http://example.com/TheBook/chapter2".into(),
+                context: None,
                 relation: Some("previous".into()),
                 params: vec![Param::new("title", Some("previous chapter".into()))],
             }],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -237,12 +281,13 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "/".into(),
+                context: None,
                 relation: Some("http://example.net/foo".into()),
                 params: vec![],
             }],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -251,15 +296,19 @@ mod tests {
     fn link_header_field_examples_3() {
         let input = "</terms>; rel=\"copyright\"; anchor=\"#foo\"";
 
+        let context = url::Url::parse("https://www.example.org/").ok();
+        let expected_context = url::Url::parse("https://www.example.org/#foo").ok();
+
         let expected = Header {
             links: vec![Link {
                 target: "/terms".into(),
+                context: expected_context,
                 relation: Some("copyright".into()),
-                params: vec![Param::new("anchor", Some("#foo".into()))],
+                params: vec![],
             }],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, context).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -272,6 +321,7 @@ mod tests {
             links: vec![
                 Link {
                     target: "/TheBook/chapter2".into(),
+                    context: None,
                     relation: Some("previous".into()),
                     params: vec![Param::new(
                         "title",
@@ -284,6 +334,7 @@ mod tests {
                 },
                 Link {
                     target: "/TheBook/chapter4".into(),
+                    context: None,
                     relation: Some("next".into()),
                     params: vec![Param::new(
                         "title",
@@ -297,7 +348,7 @@ mod tests {
             ],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -310,18 +361,20 @@ mod tests {
             links: vec![
                 Link {
                     target: "http://example.org/".into(),
+                    context: None,
                     relation: Some("start".into()),
                     params: vec![],
                 },
                 Link {
                     target: "http://example.org/".into(),
+                    context: None,
                     relation: Some("http://example.net/relation/other".into()),
                     params: vec![],
                 },
             ],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -333,12 +386,72 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "http://example.org/".into(),
+                context: None,
                 relation: Some("next".into()),
                 params: vec![Param::new("rel", Some("wrong".into()))],
             }],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn preserve_context() {
+        let input = r#"<http://example.org/>; rel="next""#;
+
+        let context = url::Url::parse("https://www.foobar.com").ok();
+
+        let expected = Header {
+            links: vec![Link {
+                target: "http://example.org/".into(),
+                context: context.clone(),
+                relation: Some("next".into()),
+                params: vec![],
+            }],
+        };
+
+        let actual = parse(input, context).expect("Expect a valid header");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn ignore_anchor_with_no_context() {
+        let input = r##"<http://example.org/>; rel="next"; anchor="#foo""##;
+
+        let expected = Header {
+            links: vec![Link {
+                target: "http://example.org/".into(),
+                context: None,
+                relation: Some("next".into()),
+                params: vec![Param::new("anchor", Some("#foo".into()))],
+            }],
+        };
+
+        let actual = parse(input, None).expect("Expect a valid header");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tolerate_extra_anchor() {
+        let input = "</terms>; rel=\"copyright\"; anchor=\"#foo\"; anchor=\"#bar\"";
+
+        let context = url::Url::parse("https://www.example.org/").ok();
+        let expected_context = url::Url::parse("https://www.example.org/#foo").ok();
+
+        let expected = Header {
+            links: vec![Link {
+                target: "/terms".into(),
+                context: expected_context,
+                relation: Some("copyright".into()),
+                params: vec![Param::new("anchor", Some("#bar".into()))],
+            }],
+        };
+
+        let actual = parse(input, context).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }
@@ -350,12 +463,13 @@ mod tests {
         let expected = Header {
             links: vec![Link {
                 target: "http://example.org/\u{FE0F}".into(),
+                context: None,
                 relation: Some("🎃".into()),
                 params: vec![],
             }],
         };
 
-        let actual = parse(input).expect("Expect a valid header");
+        let actual = parse(input, None).expect("Expect a valid header");
 
         assert_eq!(actual, expected);
     }

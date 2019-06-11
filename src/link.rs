@@ -6,6 +6,7 @@
 
 use crate::param::Param;
 use crate::uri::UriRef;
+use url;
 
 /// A link relation type.
 ///
@@ -26,11 +27,11 @@ impl From<String> for Relation {
     }
 }
 
-/// A link to a target resource. The context is implicit so rules around
-/// "anchor" are not applied.
+/// A link to a target resource.
 #[derive(Debug, PartialEq)]
 pub struct Link {
     pub target: UriRef,
+    pub context: Option<url::Url>,
     pub relation: Option<Relation>,
     pub params: Vec<Param>,
 }
