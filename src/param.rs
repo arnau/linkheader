@@ -4,10 +4,7 @@
 // This file may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::error::{ParserError, Result};
-use crate::parser::Rule;
-use percent_encoding::{percent_decode, utf8_percent_encode, DEFAULT_ENCODE_SET};
-use pest::iterators::Pair;
+use percent_encoding::{utf8_percent_encode, DEFAULT_ENCODE_SET};
 use std::fmt::{self, Display};
 
 /// A link param pair.
@@ -77,63 +74,6 @@ impl Param {
             Some(Value::Compound { .. }) => true,
             _ => false,
         }
-    }
-
-    pub fn from_rule(pair: Pair<Rule>) -> Result<Param> {
-        ensure!(
-            pair.as_rule() == Rule::param,
-            ParserError::InvalidRule(Rule::param, pair.as_rule())
-        );
-
-        let mut name = String::new();
-        let mut value = None;
-        let mut encoding = None;
-        let mut language = None;
-
-        for inner_pair in pair.into_inner() {
-            match inner_pair.as_rule() {
-                Rule::name => name.push_str(inner_pair.as_str()),
-
-                Rule::token_value => value = Some(inner_pair.as_str().into()),
-
-                Rule::quoted_value => value = Some(inner_pair.as_str().into()),
-
-                Rule::pct_value => match &encoding {
-                    Some(enc @ Encoding::Utf8) => {
-                        let decoded_value =
-                            percent_decode(inner_pair.as_str().as_bytes()).decode_utf8()?;
-
-                        value = Some(Value::Compound {
-                            value: decoded_value.into(),
-                            encoding: enc.clone(),
-                            language: language.clone(),
-                        });
-                    }
-
-                    Some(enc) => {
-                        value = Some(Value::Compound {
-                            value: inner_pair.as_str().into(),
-                            encoding: enc.clone(),
-                            language: language.clone(),
-                        });
-                    }
-
-                    _ => unreachable!(),
-                },
-
-                Rule::encoding => {
-                    let enc: Encoding = inner_pair.as_str().into();
-
-                    encoding = Some(enc);
-                }
-
-                Rule::language => language = Some(inner_pair.as_str().into()),
-
-                _ => unreachable!(),
-            }
-        }
-
-        Ok(Param { name, value })
     }
 }
 
