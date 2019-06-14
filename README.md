@@ -18,9 +18,9 @@
       [RFC8187](https://tools.ietf.org/html/rfc8187) value.
 * [ ] Compose relative targets with the given context.
 * [x] Collect the "title" param prioritising `title*` when present.
-* [ ] Collect the "hreflang" param.
+* [x] Collect the "hreflang" param.
 * [ ] Collect the "type" param.
-* [ ] Collect the "media" param.
+* [x] Collect the "media" param.
 
 ## Non-goals
 

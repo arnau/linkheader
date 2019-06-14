@@ -63,6 +63,7 @@ pub struct LinkBuilder {
     relations: Vec<String>,
     title: Option<Value>,
     lang: Option<Value>,
+    media: Option<Value>,
     params: Vec<Param>,
 }
 
@@ -74,6 +75,7 @@ impl LinkBuilder {
             anchored_context: None,
             title: None,
             lang: None,
+            media: None,
             params: vec![],
             relations: vec![],
         }
@@ -135,6 +137,13 @@ impl LinkBuilder {
         }
     }
 
+    pub fn set_media(&mut self, value: Value) {
+        match self.media {
+            None => self.media = Some(value),
+            Some(_) => self.params.push(Param::new("media", Some(value))),
+        }
+    }
+
     pub fn add_param(&mut self, param: Param) {
         self.params.push(param);
     }
@@ -150,6 +159,7 @@ impl LinkBuilder {
                 relation: None,
                 title: self.title,
                 lang: self.lang,
+                media: self.media,
                 params: self.params,
             }];
         }
@@ -161,6 +171,7 @@ impl LinkBuilder {
                 relation: Some(rel.into()),
                 title: self.title.clone(),
                 lang: self.lang.clone(),
+                media: self.media.clone(),
                 params: self.params.to_vec(),
             });
         }
@@ -191,6 +202,7 @@ fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link
                     ("anchor", Some(value)) => link_builder.set_anchor(value.clone()),
                     ("title", Some(value)) => link_builder.set_title(value.clone()),
                     ("hreflang", Some(value)) => link_builder.set_lang(value.clone()),
+                    ("media", Some(value)) => link_builder.set_media(value.clone()),
                     _ => link_builder.add_param(param),
                 }
             }
@@ -286,6 +298,7 @@ mod tests {
                 relation: None,
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![],
             }],
         };
@@ -307,6 +320,7 @@ mod tests {
                     relation: Some("next".into()),
                     title: None,
                     lang: None,
+                    media: None,
                     params: vec![],
                 },
                 Link {
@@ -315,6 +329,7 @@ mod tests {
                     relation: Some("previous".into()),
                     title: None,
                     lang: None,
+                    media: None,
                     params: vec![],
                 },
             ],
@@ -337,6 +352,7 @@ mod tests {
                 relation: Some("previous".into()),
                 title: Some("previous chapter".into()),
                 lang: None,
+                media: None,
                 params: vec![],
             }],
         };
@@ -357,6 +373,7 @@ mod tests {
                 relation: Some("http://example.net/foo".into()),
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![],
             }],
         };
@@ -380,6 +397,7 @@ mod tests {
                 relation: Some("copyright".into()),
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![],
             }],
         };
@@ -405,6 +423,7 @@ mod tests {
                         language: Some("de".into()),
                     }),
                     lang: None,
+                    media: None,
                     params: vec![],
                 },
                 Link {
@@ -417,6 +436,7 @@ mod tests {
                         language: Some("de".into()),
                     }),
                     lang: None,
+                    media: None,
                     params: vec![],
                 },
             ],
@@ -439,6 +459,7 @@ mod tests {
                     relation: Some("start".into()),
                     title: None,
                     lang: None,
+                    media: None,
                     params: vec![],
                 },
                 Link {
@@ -447,6 +468,7 @@ mod tests {
                     relation: Some("http://example.net/relation/other".into()),
                     title: None,
                     lang: None,
+                    media: None,
                     params: vec![],
                 },
             ],
@@ -472,6 +494,7 @@ mod tests {
                     language: Some("de".into()),
                 }),
                 lang: None,
+                media: None,
                 params: vec![Param::new("title", Some("letztes Kapitel".into()))],
             }],
         };
@@ -492,6 +515,7 @@ mod tests {
                 relation: Some("next".into()),
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![Param::new("rel", Some("wrong".into()))],
             }],
         };
@@ -514,6 +538,7 @@ mod tests {
                 relation: Some("next".into()),
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![],
             }],
         };
@@ -534,6 +559,7 @@ mod tests {
                 relation: Some("next".into()),
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![Param::new("anchor", Some("#foo".into()))],
             }],
         };
@@ -554,6 +580,28 @@ mod tests {
                 relation: Some("alternate".into()),
                 title: None,
                 lang: Some("ca".into()),
+                media: None,
+                params: vec![],
+            }],
+        };
+
+        let actual = parse(input, None).expect("Expect a valid header");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn media_attribute() {
+        let input = r#"<https://www.example.org>; rel="canonical"; media="screen""#;
+
+        let expected = Header {
+            links: vec![Link {
+                target: "https://www.example.org".into(),
+                context: None,
+                relation: Some("canonical".into()),
+                title: None,
+                lang: None,
+                media: Some("screen".into()),
                 params: vec![],
             }],
         };
@@ -577,6 +625,7 @@ mod tests {
                 relation: Some("copyright".into()),
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![Param::new("anchor", Some("#bar".into()))],
             }],
         };
@@ -597,6 +646,7 @@ mod tests {
                 relation: Some("🎃".into()),
                 title: None,
                 lang: None,
+                media: None,
                 params: vec![],
             }],
         };
