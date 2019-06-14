@@ -62,6 +62,7 @@ pub struct LinkBuilder {
     anchored_context: Option<url::Url>,
     relations: Vec<String>,
     title: Option<Value>,
+    lang: Option<Value>,
     params: Vec<Param>,
 }
 
@@ -72,6 +73,7 @@ impl LinkBuilder {
             context,
             anchored_context: None,
             title: None,
+            lang: None,
             params: vec![],
             relations: vec![],
         }
@@ -82,16 +84,17 @@ impl LinkBuilder {
     }
 
     pub fn set_anchor(&mut self, value: Value) {
-        if self.anchored_context.is_none() {
-            self.anchored_context = compose_context(&self.context, &value.to_string());
+        match self.anchored_context {
+            None => {
+                self.anchored_context = compose_context(&self.context, &value.to_string());
 
-            // We keep the anchor param if it is not composable with
-            // the given context to preserve information.
-            if self.anchored_context.is_none() {
-                self.params.push(Param::new("anchor", Some(value)));
+                // We keep the anchor param if it is not composable with
+                // the given context to preserve information.
+                if self.anchored_context.is_none() {
+                    self.params.push(Param::new("anchor", Some(value)));
+                }
             }
-        } else {
-            self.params.push(Param::new("anchor", Some(value)));
+            _ => self.params.push(Param::new("anchor", Some(value))),
         }
     }
 
@@ -124,6 +127,14 @@ impl LinkBuilder {
         }
     }
 
+    /// Sets the language of the link target (i.e. `hreflang`).
+    pub fn set_lang(&mut self, value: Value) {
+        match self.lang {
+            None => self.lang = Some(value),
+            Some(_) => self.params.push(Param::new("hreflang", Some(value))),
+        }
+    }
+
     pub fn add_param(&mut self, param: Param) {
         self.params.push(param);
     }
@@ -138,6 +149,7 @@ impl LinkBuilder {
                 context: context,
                 relation: None,
                 title: self.title,
+                lang: self.lang,
                 params: self.params,
             }];
         }
@@ -148,6 +160,7 @@ impl LinkBuilder {
                 context: context.clone(),
                 relation: Some(rel.into()),
                 title: self.title.clone(),
+                lang: self.lang.clone(),
                 params: self.params.to_vec(),
             });
         }
@@ -177,6 +190,7 @@ fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link
                     ("rel", Some(value)) => link_builder.set_rel(value.clone()),
                     ("anchor", Some(value)) => link_builder.set_anchor(value.clone()),
                     ("title", Some(value)) => link_builder.set_title(value.clone()),
+                    ("hreflang", Some(value)) => link_builder.set_lang(value.clone()),
                     _ => link_builder.add_param(param),
                 }
             }
@@ -271,6 +285,7 @@ mod tests {
                 context: None,
                 relation: None,
                 title: None,
+                lang: None,
                 params: vec![],
             }],
         };
@@ -291,6 +306,7 @@ mod tests {
                     context: None,
                     relation: Some("next".into()),
                     title: None,
+                    lang: None,
                     params: vec![],
                 },
                 Link {
@@ -298,6 +314,7 @@ mod tests {
                     context: None,
                     relation: Some("previous".into()),
                     title: None,
+                    lang: None,
                     params: vec![],
                 },
             ],
@@ -319,6 +336,7 @@ mod tests {
                 context: None,
                 relation: Some("previous".into()),
                 title: Some("previous chapter".into()),
+                lang: None,
                 params: vec![],
             }],
         };
@@ -338,6 +356,7 @@ mod tests {
                 context: None,
                 relation: Some("http://example.net/foo".into()),
                 title: None,
+                lang: None,
                 params: vec![],
             }],
         };
@@ -360,6 +379,7 @@ mod tests {
                 context: expected_context,
                 relation: Some("copyright".into()),
                 title: None,
+                lang: None,
                 params: vec![],
             }],
         };
@@ -384,6 +404,7 @@ mod tests {
                         encoding: Encoding::Utf8,
                         language: Some("de".into()),
                     }),
+                    lang: None,
                     params: vec![],
                 },
                 Link {
@@ -395,6 +416,7 @@ mod tests {
                         encoding: Encoding::Utf8,
                         language: Some("de".into()),
                     }),
+                    lang: None,
                     params: vec![],
                 },
             ],
@@ -416,6 +438,7 @@ mod tests {
                     context: None,
                     relation: Some("start".into()),
                     title: None,
+                    lang: None,
                     params: vec![],
                 },
                 Link {
@@ -423,6 +446,7 @@ mod tests {
                     context: None,
                     relation: Some("http://example.net/relation/other".into()),
                     title: None,
+                    lang: None,
                     params: vec![],
                 },
             ],
@@ -447,6 +471,7 @@ mod tests {
                     encoding: Encoding::Utf8,
                     language: Some("de".into()),
                 }),
+                lang: None,
                 params: vec![Param::new("title", Some("letztes Kapitel".into()))],
             }],
         };
@@ -466,6 +491,7 @@ mod tests {
                 context: None,
                 relation: Some("next".into()),
                 title: None,
+                lang: None,
                 params: vec![Param::new("rel", Some("wrong".into()))],
             }],
         };
@@ -487,6 +513,7 @@ mod tests {
                 context: context.clone(),
                 relation: Some("next".into()),
                 title: None,
+                lang: None,
                 params: vec![],
             }],
         };
@@ -506,7 +533,28 @@ mod tests {
                 context: None,
                 relation: Some("next".into()),
                 title: None,
+                lang: None,
                 params: vec![Param::new("anchor", Some("#foo".into()))],
+            }],
+        };
+
+        let actual = parse(input, None).expect("Expect a valid header");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn lang_attribute() {
+        let input = r#"<https://ca.example.org>; rel="alternate"; hreflang="ca""#;
+
+        let expected = Header {
+            links: vec![Link {
+                target: "https://ca.example.org".into(),
+                context: None,
+                relation: Some("alternate".into()),
+                title: None,
+                lang: Some("ca".into()),
+                params: vec![],
             }],
         };
 
@@ -528,6 +576,7 @@ mod tests {
                 context: expected_context,
                 relation: Some("copyright".into()),
                 title: None,
+                lang: None,
                 params: vec![Param::new("anchor", Some("#bar".into()))],
             }],
         };
@@ -547,6 +596,7 @@ mod tests {
                 context: None,
                 relation: Some("🎃".into()),
                 title: None,
+                lang: None,
                 params: vec![],
             }],
         };
