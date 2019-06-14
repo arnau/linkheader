@@ -36,5 +36,6 @@ pub struct Link {
     pub title: Option<Value>,
     pub lang: Option<Value>,
     pub media: Option<Value>,
+    pub content_type: Option<Value>,
     pub params: Vec<Param>,
 }

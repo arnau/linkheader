@@ -19,7 +19,7 @@
 * [ ] Compose relative targets with the given context.
 * [x] Collect the "title" param prioritising `title*` when present.
 * [x] Collect the "hreflang" param.
-* [ ] Collect the "type" param.
+* [x] Collect the "type" param.
 * [x] Collect the "media" param.
 
 ## Non-goals
