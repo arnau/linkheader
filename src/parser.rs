@@ -5,7 +5,7 @@
 // according to those terms.
 
 use crate::error::{ParserError, Result};
-use crate::{Encoding, Header, Link, Param, UriRef, Value};
+use crate::{Encoding, Header, Link, Param, Value};
 use percent_encoding::percent_decode;
 pub use pest::{iterators::Pair, Parser};
 use std::fmt::{self, Display};
@@ -54,65 +54,130 @@ fn collect_header(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Header>
     Ok(Header { links })
 }
 
+/// Collects attributes and params for a set of links.
+#[derive(Debug, Clone)]
+pub struct LinkBuilder {
+    target: String,
+    context: Option<url::Url>,
+    anchored_context: Option<url::Url>,
+    relations: Vec<String>,
+    title: Option<Value>,
+    params: Vec<Param>,
+}
+
+impl LinkBuilder {
+    pub fn new(context: Option<url::Url>) -> LinkBuilder {
+        LinkBuilder {
+            target: String::new(),
+            context,
+            anchored_context: None,
+            title: None,
+            params: vec![],
+            relations: vec![],
+        }
+    }
+
+    pub fn set_target(&mut self, target: &str) {
+        self.target.push_str(target);
+    }
+
+    pub fn set_anchor(&mut self, value: Value) {
+        if self.anchored_context.is_none() {
+            self.anchored_context = compose_context(&self.context, &value.to_string());
+
+            // We keep the anchor param if it is not composable with
+            // the given context to preserve information.
+            if self.anchored_context.is_none() {
+                self.params.push(Param::new("anchor", Some(value)));
+            }
+        } else {
+            self.params.push(Param::new("anchor", Some(value)));
+        }
+    }
+
+    pub fn set_title(&mut self, value: Value) {
+        match &self.title {
+            Some(current_value) => {
+                if current_value.is_simple() && value.is_compound() {
+                    self.params
+                        .push(Param::new("title", Some(current_value.clone())));
+                    self.title = Some(value);
+                } else {
+                    self.params.push(Param::new("title", Some(value)));
+                }
+            }
+            None => {
+                self.title = Some(value);
+            }
+        }
+    }
+
+    /// Takes a rel value and either sets it as a list of rel tokens or keeps
+    /// it as a parameter.
+    pub fn set_rel(&mut self, value: Value) {
+        if self.relations.is_empty() {
+            let values: Vec<String> = value.to_string().split(" ").map(|s| s.into()).collect();
+
+            self.relations.extend(values);
+        } else {
+            self.params.push(Param::new("rel", Some(value)));
+        }
+    }
+
+    pub fn add_param(&mut self, param: Param) {
+        self.params.push(param);
+    }
+
+    pub fn build(self) -> Vec<Link> {
+        let mut result = vec![];
+        let context = self.anchored_context.or(self.context);
+
+        if self.relations.is_empty() {
+            return vec![Link {
+                target: self.target.into(),
+                context: context,
+                relation: None,
+                title: self.title,
+                params: self.params,
+            }];
+        }
+
+        for rel in self.relations.into_iter() {
+            result.push(Link {
+                target: self.target.clone().into(),
+                context: context.clone(),
+                relation: Some(rel.into()),
+                title: self.title.clone(),
+                params: self.params.to_vec(),
+            });
+        }
+
+        result
+    }
+}
+
 fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link>> {
     ensure!(
         pair.as_rule() == Rule::link,
         ParserError::InvalidRule(Rule::link, pair.as_rule())
     );
 
-    let mut target = String::new();
-    let mut anchored_context = None;
-    let mut title: Option<Value> = None;
-    let mut params = vec![];
-    let mut relations = vec![];
+    let mut link_builder = LinkBuilder::new(context.clone());
 
     for inner_pair in pair.into_inner() {
         match inner_pair.as_rule() {
             Rule::target => {
-                target.push_str(inner_pair.as_str());
+                link_builder.set_target(inner_pair.as_str());
             }
 
             Rule::param => {
                 let param = collect_param(inner_pair)?;
 
                 match (param.name(), param.value()) {
-                    ("rel", Some(value)) => {
-                        if relations.is_empty() {
-                            let values: Vec<String> =
-                                value.to_string().split(" ").map(|s| s.into()).collect();
-
-                            relations.extend(values);
-                        } else {
-                            params.push(param);
-                        }
-                    }
-                    ("anchor", Some(value)) => {
-                        if anchored_context.is_none() {
-                            anchored_context = compose_context(&context, &value.to_string());
-
-                            // We keep the anchor param if it is not composable with
-                            // the given context to preserve information.
-                            if anchored_context.is_none() {
-                                params.push(param);
-                            }
-                        } else {
-                            params.push(param);
-                        }
-                    }
-                    ("title", Some(value)) => match &title {
-                        Some(current_value) => {
-                            if current_value.is_simple() && value.is_compound() {
-                                params.push(Param::new("title", Some(current_value.clone())));
-                                title = Some(value.clone());
-                            } else {
-                                params.push(param);
-                            }
-                        }
-                        None => {
-                            title = Some(value.clone());
-                        }
-                    },
-                    _ => params.push(param),
+                    ("rel", Some(value)) => link_builder.set_rel(value.clone()),
+                    ("anchor", Some(value)) => link_builder.set_anchor(value.clone()),
+                    ("title", Some(value)) => link_builder.set_title(value.clone()),
+                    _ => link_builder.add_param(param),
                 }
             }
 
@@ -120,13 +185,7 @@ fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link
         }
     }
 
-    Ok(explode_links(
-        target.clone().into(),
-        anchored_context.or(context),
-        relations,
-        title,
-        &params,
-    ))
+    Ok(link_builder.build())
 }
 
 /// Returns a context combined with the given anchor.
@@ -139,38 +198,6 @@ fn compose_context(context: &Option<url::Url>, anchor: &str) -> Option<url::Url>
 
         None => url::Url::parse(anchor).ok(),
     }
-}
-
-fn explode_links(
-    target: UriRef,
-    context: Option<url::Url>,
-    relations: Vec<String>,
-    title: Option<Value>,
-    params: &[Param],
-) -> Vec<Link> {
-    let mut result = vec![];
-
-    if relations.is_empty() {
-        return vec![Link {
-            target,
-            context: context.clone(),
-            relation: None,
-            title: title.clone(),
-            params: params.to_vec(),
-        }];
-    }
-
-    for rel in relations.into_iter() {
-        result.push(Link {
-            target: target.clone(),
-            context: context.clone(),
-            relation: Some(rel.into()),
-            title: title.clone(),
-            params: params.to_vec(),
-        });
-    }
-
-    result
 }
 
 fn collect_param(pair: Pair<Rule>) -> Result<Param> {
