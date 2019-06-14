@@ -182,6 +182,30 @@ impl From<String> for Value {
     }
 }
 
+impl Value {
+    /// Returns the text value from either simple or compound values.
+    pub fn text(&self) -> &str {
+        match self {
+            Value::Simple(value) => &value,
+            Value::Compound { value, .. } => &value,
+        }
+    }
+
+    pub fn is_compound(&self) -> bool {
+        match self {
+            Value::Compound { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_simple(&self) -> bool {
+        match self {
+            Value::Simple(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl Display for Value {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {

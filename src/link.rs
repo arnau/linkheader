@@ -4,7 +4,7 @@
 // This file may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::param::Param;
+use crate::param::{Param, Value};
 use crate::uri::UriRef;
 use url;
 
@@ -33,5 +33,6 @@ pub struct Link {
     pub target: UriRef,
     pub context: Option<url::Url>,
     pub relation: Option<Relation>,
+    pub title: Option<Value>,
     pub params: Vec<Param>,
 }

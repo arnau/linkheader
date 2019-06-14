@@ -17,7 +17,7 @@
 * [x] Star params (e.g. `title*=UTF-8'en'foo%20bar`) expect a valid
       [RFC8187](https://tools.ietf.org/html/rfc8187) value.
 * [ ] Compose relative targets with the given context.
-* [ ] Collect the "title" param prioritising `title*` when present.
+* [x] Collect the "title" param prioritising `title*` when present.
 * [ ] Collect the "hreflang" param.
 * [ ] Collect the "type" param.
 * [ ] Collect the "media" param.

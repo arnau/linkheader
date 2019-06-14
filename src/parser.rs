@@ -62,6 +62,7 @@ fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link
 
     let mut target = String::new();
     let mut anchored_context = None;
+    let mut title: Option<Value> = None;
     let mut params = vec![];
     let mut relations = vec![];
 
@@ -74,22 +75,44 @@ fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link
             Rule::param => {
                 let param = collect_param(inner_pair)?;
 
-                if is_expected_param("rel", &param) && relations.is_empty() {
-                    let value = param.into_value().unwrap().to_string();
-                    let values: Vec<String> = value.split(" ").map(|s| s.into()).collect();
+                match (param.name(), param.value()) {
+                    ("rel", Some(value)) => {
+                        if relations.is_empty() {
+                            let values: Vec<String> =
+                                value.to_string().split(" ").map(|s| s.into()).collect();
 
-                    relations.extend(values);
-                } else if is_expected_param("anchor", &param) && anchored_context.is_none() {
-                    let value = param.clone().into_value().unwrap().to_string();
-                    anchored_context = compose_context(&context, &value);
-
-                    // We keep the anchor param if it is not composable with
-                    // the given context to preserve information.
-                    if anchored_context.is_none() {
-                        params.push(param);
+                            relations.extend(values);
+                        } else {
+                            params.push(param);
+                        }
                     }
-                } else {
-                    params.push(param);
+                    ("anchor", Some(value)) => {
+                        if anchored_context.is_none() {
+                            anchored_context = compose_context(&context, &value.to_string());
+
+                            // We keep the anchor param if it is not composable with
+                            // the given context to preserve information.
+                            if anchored_context.is_none() {
+                                params.push(param);
+                            }
+                        } else {
+                            params.push(param);
+                        }
+                    }
+                    ("title", Some(value)) => match &title {
+                        Some(current_value) => {
+                            if current_value.is_simple() && value.is_compound() {
+                                params.push(Param::new("title", Some(current_value.clone())));
+                                title = Some(value.clone());
+                            } else {
+                                params.push(param);
+                            }
+                        }
+                        None => {
+                            title = Some(value.clone());
+                        }
+                    },
+                    _ => params.push(param),
                 }
             }
 
@@ -101,12 +124,9 @@ fn collect_links(pair: Pair<Rule>, context: Option<url::Url>) -> Result<Vec<Link
         target.clone().into(),
         anchored_context.or(context),
         relations,
+        title,
         &params,
     ))
-}
-
-fn is_expected_param(name: &str, param: &Param) -> bool {
-    param.name() == name && param.value().is_some()
 }
 
 /// Returns a context combined with the given anchor.
@@ -125,6 +145,7 @@ fn explode_links(
     target: UriRef,
     context: Option<url::Url>,
     relations: Vec<String>,
+    title: Option<Value>,
     params: &[Param],
 ) -> Vec<Link> {
     let mut result = vec![];
@@ -134,6 +155,7 @@ fn explode_links(
             target,
             context: context.clone(),
             relation: None,
+            title: title.clone(),
             params: params.to_vec(),
         }];
     }
@@ -143,6 +165,7 @@ fn explode_links(
             target: target.clone(),
             context: context.clone(),
             relation: Some(rel.into()),
+            title: title.clone(),
             params: params.to_vec(),
         });
     }
@@ -220,6 +243,7 @@ mod tests {
                 target: "https://example.org".into(),
                 context: None,
                 relation: None,
+                title: None,
                 params: vec![],
             }],
         };
@@ -239,12 +263,14 @@ mod tests {
                     target: "https://example.org/3".into(),
                     context: None,
                     relation: Some("next".into()),
+                    title: None,
                     params: vec![],
                 },
                 Link {
                     target: "https://example.org/1".into(),
                     context: None,
                     relation: Some("previous".into()),
+                    title: None,
                     params: vec![],
                 },
             ],
@@ -265,7 +291,8 @@ mod tests {
                 target: "http://example.com/TheBook/chapter2".into(),
                 context: None,
                 relation: Some("previous".into()),
-                params: vec![Param::new("title", Some("previous chapter".into()))],
+                title: Some("previous chapter".into()),
+                params: vec![],
             }],
         };
 
@@ -283,6 +310,7 @@ mod tests {
                 target: "/".into(),
                 context: None,
                 relation: Some("http://example.net/foo".into()),
+                title: None,
                 params: vec![],
             }],
         };
@@ -304,6 +332,7 @@ mod tests {
                 target: "/terms".into(),
                 context: expected_context,
                 relation: Some("copyright".into()),
+                title: None,
                 params: vec![],
             }],
         };
@@ -323,27 +352,23 @@ mod tests {
                     target: "/TheBook/chapter2".into(),
                     context: None,
                     relation: Some("previous".into()),
-                    params: vec![Param::new(
-                        "title",
-                        Some(Value::Compound {
-                            value: "letztes Kapitel".into(),
-                            encoding: Encoding::Utf8,
-                            language: Some("de".into()),
-                        }),
-                    )],
+                    title: Some(Value::Compound {
+                        value: "letztes Kapitel".into(),
+                        encoding: Encoding::Utf8,
+                        language: Some("de".into()),
+                    }),
+                    params: vec![],
                 },
                 Link {
                     target: "/TheBook/chapter4".into(),
                     context: None,
                     relation: Some("next".into()),
-                    params: vec![Param::new(
-                        "title",
-                        Some(Value::Compound {
-                            value: "nächstes Kapitel".into(),
-                            encoding: Encoding::Utf8,
-                            language: Some("de".into()),
-                        }),
-                    )],
+                    title: Some(Value::Compound {
+                        value: "nächstes Kapitel".into(),
+                        encoding: Encoding::Utf8,
+                        language: Some("de".into()),
+                    }),
+                    params: vec![],
                 },
             ],
         };
@@ -363,15 +388,40 @@ mod tests {
                     target: "http://example.org/".into(),
                     context: None,
                     relation: Some("start".into()),
+                    title: None,
                     params: vec![],
                 },
                 Link {
                     target: "http://example.org/".into(),
                     context: None,
                     relation: Some("http://example.net/relation/other".into()),
+                    title: None,
                     params: vec![],
                 },
             ],
+        };
+
+        let actual = parse(input, None).expect("Expect a valid header");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn prefer_star_title() {
+        let input = r#"</TheBook/chapter2>; rel="previous"; title="letztes Kapitel"; title*=UTF-8'de'letztes%20Kapitel"#;
+
+        let expected = Header {
+            links: vec![Link {
+                target: "/TheBook/chapter2".into(),
+                context: None,
+                relation: Some("previous".into()),
+                title: Some(Value::Compound {
+                    value: "letztes Kapitel".into(),
+                    encoding: Encoding::Utf8,
+                    language: Some("de".into()),
+                }),
+                params: vec![Param::new("title", Some("letztes Kapitel".into()))],
+            }],
         };
 
         let actual = parse(input, None).expect("Expect a valid header");
@@ -388,6 +438,7 @@ mod tests {
                 target: "http://example.org/".into(),
                 context: None,
                 relation: Some("next".into()),
+                title: None,
                 params: vec![Param::new("rel", Some("wrong".into()))],
             }],
         };
@@ -408,6 +459,7 @@ mod tests {
                 target: "http://example.org/".into(),
                 context: context.clone(),
                 relation: Some("next".into()),
+                title: None,
                 params: vec![],
             }],
         };
@@ -426,6 +478,7 @@ mod tests {
                 target: "http://example.org/".into(),
                 context: None,
                 relation: Some("next".into()),
+                title: None,
                 params: vec![Param::new("anchor", Some("#foo".into()))],
             }],
         };
@@ -447,6 +500,7 @@ mod tests {
                 target: "/terms".into(),
                 context: expected_context,
                 relation: Some("copyright".into()),
+                title: None,
                 params: vec![Param::new("anchor", Some("#bar".into()))],
             }],
         };
@@ -465,6 +519,7 @@ mod tests {
                 target: "http://example.org/\u{FE0F}".into(),
                 context: None,
                 relation: Some("🎃".into()),
+                title: None,
                 params: vec![],
             }],
         };
