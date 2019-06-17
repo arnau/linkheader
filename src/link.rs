@@ -34,7 +34,7 @@ pub struct Link {
     pub context: Option<url::Url>,
     pub relation: Option<Relation>,
     pub title: Option<Value>,
-    pub lang: Option<Value>,
+    pub lang: Vec<Value>,
     pub media: Option<Value>,
     pub content_type: Option<Value>,
     pub params: Vec<Param>,
